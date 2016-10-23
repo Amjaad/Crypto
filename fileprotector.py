@@ -3,14 +3,13 @@ import click
 import datetime as dt
 from passlib.hash import sha512_crypt
 from os.path import expanduser
+import logging
 import re
 
- # """ The system will operate in two modes:
- # 1) Administrator mode = If the users file is present, then admin username & password must have been provided.
- #  Otherwise, the system is in initialization mode.
- # 2) User mode
- # """
+FORMAT = '%(asctime)-10s %(user)-8s %(message)s'
+logging.basicConfig(format=FORMAT,level=logging.INFO)
 home = expanduser("~")
+user_id={}
 def selectMod():
     if (os.path.exists('users')):
         @click.command()
@@ -18,11 +17,13 @@ def selectMod():
         @click.option('--password',hide_input=True,
               help='Enter a password')
         def doAuthi(user, password):
+            user_id['user']=user
             if(authi(user,password)):
-                click.echo("log success")
+                logging.info('SUCCESS: %s','You are successfully logged in.',extra=user_id)
+                request=input()
+                commandOpt(request)
             else:
-                #log failuer
-                click.echo("log failuer")
+                logging.error('FAILURE: %s', 'The username or password you entered is incorrect.', extra=user_id)
                 exit()
         doAuthi()
     #Create Admin if users.file doesn't exist.
@@ -31,7 +32,6 @@ def selectMod():
         @click.option('--password', prompt=True, hide_input=True,
               confirmation_prompt=True,  help='Enter a password')
         def createAdmin(password):
-            print("wrong")
             addEntity('admin',password)
         createAdmin()
         exit()
@@ -51,18 +51,46 @@ def authi(user, password):
         return sha512_crypt.verify(password, hash)
 
 def addEntity(user,password):
-    # generate new salt, and hash a password
-    hash = sha512_crypt.encrypt(password,rounds=10000)
-    # sha512_crypt.encrypt returns a string in this format:
-    #    '$6$rounds=10000$salt$hashed-password'
-    # So we need to change the fromat to '$6$salt$hashed-password'
-    securedPassword = re.sub('rounds=10000\$', '', hash)
-    dateUpdate = dt.datetime.today().strftime("%m/%d/%Y")
-    usersFile = open('users', 'w')
-    record = ''+user+':'+securedPassword+':'+dateUpdate+'\n'
-    usersFile.write(record)
-    usersFile.close()
+    if(not isAdmin()):
+        logging.error('UNAUTHORIZED: %s', 'Not allowed because you do not have permission to add a user', extra=user_id)
+    elif(usernameExists(user)):
+        logging.error('FAILURE: %s', ('Username "%s" already exists.'%user), extra=user_id)
+    else:
+        # generate new salt, and hash a password
+        hash = sha512_crypt.encrypt(password,rounds=10000)
+        # sha512_crypt.encrypt returns a string in this format:
+        #    '$6$rounds=10000$salt$hashed-password'
+        # So we need to change the fromat to '$6$salt$hashed-password'
+        securedPassword = re.sub('rounds=10000\$', '', hash)
+        dateUpdate = dt.datetime.today().strftime("%m/%d/%Y")
+        usersFile = open('users', 'a')
+        record = ''+user+':'+securedPassword+':'+dateUpdate+'\n'
+        usersFile.write(record)
+        usersFile.close()
 
+def usernameExists(user):
+    usersFile = "users"
+    if (os.path.exists(usersFile)):
+        with open(usersFile, "r") as f:
+            for line in f:
+                if(line.strip().split(":")[0]==user):
+                    return True
+    return False
+
+def commandOpt(request):
+    command=request.split(" ")[0]
+    if command =='adduser':
+        addEntity(request.split(" ")[1],request.split(" ")[2])
+    elif command == '2':
+        print("delete")
+    elif command == '3':
+        print("find")
+    else:
+        print("Unknown Option Selected!")
+
+
+def isAdmin():
+    return user_id['user']=='admin'
 
 if __name__ == '__main__':
     selectMod()
