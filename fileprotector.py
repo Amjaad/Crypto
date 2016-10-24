@@ -3,7 +3,7 @@ import sys
 import fileinput
 import click
 import datetime as dt
-from passlib.hash import sha512_crypt
+from passlib.hash import pbkdf2_sha512
 from os.path import expanduser
 import logging
 import re
@@ -49,8 +49,9 @@ def authi(user, password):
                     foundUser=True
     if foundUser:
         securedPass = records and records[0][1]
-        hash= securedPass[0:3]+"rounds=10000$"+securedPass[3:]
-        return sha512_crypt.verify(password, hash)
+        #fromat the hash to match pbkdf2_sha512 outputs.
+        hash= "$pbkdf2-sha512$10000"+securedPass[2:]
+        return pbkdf2_sha512.verify(password, hash)
 
 def addEntity(user,password):
     if(os.path.exists('users') and not isAdmin()):
@@ -97,16 +98,16 @@ def setPassword(newPass):
             if line.strip().startswith(currentUser):
                  line = generateSecPass(currentUser,newPass)
             sys.stdout.write(line)
-
+    logging.info('SUCCESS: %s','Your password has been reset successfully.',extra=user_id)
 def generateSecPass(user,password):
     # generate new salt, and hash a password
-    hash = sha512_crypt.encrypt(password,rounds=10000)
+    hash = pbkdf2_sha512.encrypt(password,rounds=10000)
     # sha512_crypt.encrypt returns a string in this format:
     #    '$6$rounds=10000$salt$hashed-password'
     # So we need to change the fromat to '$6$salt$hashed-password'
-    securedPassword = re.sub('rounds=10000\$', '', hash)
+    securedPassword = re.sub('\$pbkdf2-sha512\$10000\$', '', hash)
     dateUpdate = dt.datetime.today().strftime("%m/%d/%Y")
-    record = ''+user+':'+securedPassword+':'+dateUpdate+'\n'
+    record = ''+user+':$6$'+securedPassword+':'+dateUpdate+'\n'
     return record
 
 if __name__ == '__main__':
