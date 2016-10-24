@@ -1,4 +1,6 @@
 import os
+import sys
+import fileinput
 import click
 import datetime as dt
 from passlib.hash import sha512_crypt
@@ -51,20 +53,13 @@ def authi(user, password):
         return sha512_crypt.verify(password, hash)
 
 def addEntity(user,password):
-    if(not isAdmin()):
+    if(os.path.exists('users') and not isAdmin()):
         logging.error('UNAUTHORIZED: %s', 'Not allowed because you do not have permission to add a user', extra=user_id)
     elif(usernameExists(user)):
         logging.error('FAILURE: %s', ('Username "%s" already exists.'%user), extra=user_id)
     else:
-        # generate new salt, and hash a password
-        hash = sha512_crypt.encrypt(password,rounds=10000)
-        # sha512_crypt.encrypt returns a string in this format:
-        #    '$6$rounds=10000$salt$hashed-password'
-        # So we need to change the fromat to '$6$salt$hashed-password'
-        securedPassword = re.sub('rounds=10000\$', '', hash)
-        dateUpdate = dt.datetime.today().strftime("%m/%d/%Y")
         usersFile = open('users', 'a')
-        record = ''+user+':'+securedPassword+':'+dateUpdate+'\n'
+        record = generateSecPass(user,password)
         usersFile.write(record)
         usersFile.close()
 
@@ -80,10 +75,12 @@ def usernameExists(user):
 def commandOpt(request):
     command=request.split(" ")[0]
     if command =='adduser':
-        addEntity(request.split(" ")[1],request.split(" ")[2])
-    elif command == '2':
-        print("delete")
-    elif command == '3':
+        arg=request.split(" ")
+        addEntity(arg[1],arg[2])
+    elif command == 'setpassword':
+        arg=request.split(" ")
+        setPassword(arg[1])
+    elif command == '':
         print("find")
     else:
         print("Unknown Option Selected!")
@@ -91,6 +88,26 @@ def commandOpt(request):
 
 def isAdmin():
     return user_id['user']=='admin'
+
+def setPassword(newPass):
+    currentUser=user_id['user']
+    usersFile = "users"
+    if (os.path.exists(usersFile)):
+        for line in fileinput.input([usersFile], inplace=True):
+            if line.strip().startswith(currentUser):
+                 line = generateSecPass(currentUser,newPass)
+            sys.stdout.write(line)
+
+def generateSecPass(user,password):
+    # generate new salt, and hash a password
+    hash = sha512_crypt.encrypt(password,rounds=10000)
+    # sha512_crypt.encrypt returns a string in this format:
+    #    '$6$rounds=10000$salt$hashed-password'
+    # So we need to change the fromat to '$6$salt$hashed-password'
+    securedPassword = re.sub('rounds=10000\$', '', hash)
+    dateUpdate = dt.datetime.today().strftime("%m/%d/%Y")
+    record = ''+user+':'+securedPassword+':'+dateUpdate+'\n'
+    return record
 
 if __name__ == '__main__':
     selectMod()
