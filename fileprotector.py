@@ -8,7 +8,7 @@ from os.path import expanduser
 import logging
 import re
 
-FORMAT = '%(asctime)-10s %(user)-8s %(message)s'
+FORMAT = '%(asctime)s - %(levelname)s - %(user)s - %(message)s'
 logging.basicConfig(format=FORMAT,level=logging.INFO)
 home = expanduser("~")
 user_id={}
@@ -102,8 +102,8 @@ def setPassword(newPass):
 def generateSecPass(user,password):
     # generate new salt, and hash a password
     hash = pbkdf2_sha512.encrypt(password,rounds=10000)
-    # sha512_crypt.encrypt returns a string in this format:
-    #    '$6$rounds=10000$salt$hashed-password'
+    # pbkdf2_sha512.encrypt returns a string in this format:
+    # '$pbkdf2-sha512$10000$rounds=10000$salt$hashed-password'
     # So we need to change the fromat to '$6$salt$hashed-password'
     securedPassword = re.sub('\$pbkdf2-sha512\$10000\$', '', hash)
     dateUpdate = dt.datetime.today().strftime("%m/%d/%Y")
