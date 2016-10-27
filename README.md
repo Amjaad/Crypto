@@ -34,7 +34,7 @@ While MyCrypto v2 is still under development, we would like to let our users kno
   
   What you should expect to see in MyCrypto v2?
   
-  * The minimum password length to be greater than 8 characters. The system will compute the entropy for the password the user enters when creating the account. If the password doesn't have at least 80 bits of entropy, It won't be accepted and the user will be asked to choose another password.
+  * The minimum password length to be greater than 13 characters. The system will compute the entropy for the password the user enters when creating the account. If the password doesn't have at least 80 bits of entropy, It won't be accepted and the user will be asked to choose another password.
   * The systems will not allow the new users to use their account before changing their password. 
   *  User session will expire after 2 hours of not being used.
   *  More advance encryption algorithms will be added. 
