@@ -13,9 +13,9 @@ from Crypto import Random
 #System setup
 FORMAT = '%(asctime)s - %(levelname)s - %(user)s - %(message)s'
 logging.basicConfig(filename='fileprotector.log', filemode='a',format=FORMAT,level=logging.INFO)
-Home = os.getcwd()
-usersFile = os.path.join(Home,'users')
-filesDB= os.path.join(Home,'files')
+Home_dir = os.getcwd()
+usersFile = os.path.join(Home_dir,'users')
+filesDB= os.path.join(Home_dir,'files')
 user_id={}
 
 def selectMod():
@@ -24,12 +24,18 @@ def selectMod():
         @click.option('--user', help='username')
         @click.option('--password',hide_input=True,
               help='Enter a password')
-        def doAuthi(user, password):
+        @click.option('--home', help='set home directory')
+        def doAuthi(user, password,home):
+            if home is not None:
+                global Home_dir
+                Home_dir = home
             user_id['user']=user
             if(authi(user,password)):
                 logging.info('SUCCESS: %s','You are successfully logged in.',extra=user_id)
                 request=input()
-                commandOpt(request)
+                while(True):
+                    commandOpt(request)
+                    request=input()
             else:
                 logging.error('FAILURE: %s', 'The username or password you entered is incorrect.', extra=user_id)
                 exit()
@@ -39,7 +45,11 @@ def selectMod():
         @click.command()
         @click.option('--password', prompt=True, hide_input=True,
               confirmation_prompt=True,  help='Enter a password')
-        def createAdmin(password):
+        @click.option('--home', help='set home directory')
+        def createAdmin(password,home):
+            if home is not None:
+                global Home_dir
+                Home_dir = home
             addEntity('admin',password)
         createAdmin()
         exit()
@@ -162,16 +172,17 @@ def encrypt_file(file_path, file_pass):
         logging.error('FAILURE: %s', ('The file %s does not exist.'%file_name), extra=user_id)
     else:
         integrity_value= compute_integrity(file_path)
-        with open(file_name, 'rb') as fo:
+        with open(file_path, 'rb') as fo:
             plaintext = fo.read()
         enc = encrypt(plaintext, derivedKey)
         try:
-            with open(os.path.join(Home+'/data',file_name), 'wb') as outfile:
+            os.makedirs(os.path.dirname(os.path.join(Home_dir+'/data',file_name)), exist_ok=True)
+            with open(os.path.join(Home_dir+'/data',file_name), 'wb') as outfile:
                 outfile.write(enc)
             logging.info('SUCCESS: %s',('The file %s has been encrypted successfully.'%file_name),extra=user_id)
             addFileEntry(file_name,integrity_value,salt,'')
         except IOError:
-            logging.error('FAILURE: %s',('The file %s does not exist.'%outfile), extra=user_id)
+            logging.error('FAILURE: %s',('Could not open the outfile %s does not exist.'%file_name), extra=user_id)
 
 def decrypt_file(secure_file,orig_file, file_pass):
     (foundFile,authoUser)= lookupFile(secure_file)
@@ -185,7 +196,7 @@ def decrypt_file(secure_file,orig_file, file_pass):
             derivedKey = sha256(derivedKey).digest()
         derivedKey = derivedKey[:KEY_SIZE]
         try:
-            with open(os.path.join(Home+'/data',secure_file), 'rb') as fo:
+            with open(os.path.join(Home_dir+'/data',secure_file), 'rb') as fo:
                 ciphertext = fo.read()
             dec = decrypt(ciphertext, derivedKey)
         except IOError:
@@ -236,7 +247,7 @@ def lookupFile(file_name):
                         return (foundFile,AuthoUser)
 
     logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
-    (foundFile,AuthiUser)= (False,False)
+    (foundFile,AuthoUser)= (False,False)
     return (foundFile,AuthoUser)
 
 def authorizeUser(username, file_name):
@@ -307,10 +318,4 @@ def extract_integValue_salt(file_name):
                 return (line.strip().split(":")[1],line.strip().split(":")[2])
 
 if __name__ == '__main__':
-    @click.command()
-    @click.option('--home', help='set home directory')
-    def setHomeDir(home):
-        global Home
-        Home = home
-    setHomeDir()
     selectMod()
