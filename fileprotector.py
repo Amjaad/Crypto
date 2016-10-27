@@ -1,4 +1,4 @@
-import os, random, struct
+import os
 import sys
 import fileinput
 import click
@@ -12,7 +12,7 @@ from Crypto.Cipher import AES
 from Crypto import Random
 #System setup
 FORMAT = '%(asctime)s - %(levelname)s - %(user)s - %(message)s'
-logging.basicConfig(format=FORMAT,level=logging.INFO)
+logging.basicConfig(filename='fileprotector.log', filemode='a',format=FORMAT,level=logging.INFO)
 home = '/Users/amjad/git/Crypto/HOME'
 usersFile = os.path.join(home,'users')
 filesDB= os.path.join(home,'files')
@@ -64,10 +64,10 @@ def addEntity(user,password):
     elif(usernameExists(user)):
         logging.error('FAILURE: %s', ('Username "%s" already exists.'%user), extra=user_id)
     else:
-        usersFile = open(usersFile, 'a')
+        usersfile = open(usersFile, 'a')
         record = generateSecPass(user,password)
-        usersFile.write(record)
-        usersFile.close()
+        usersfile.write(record)
+        usersfile.close()
 
 def usernameExists(user):
     if (os.path.exists(usersFile)):
@@ -89,9 +89,12 @@ def commandOpt(request):
         arg=request.split(" ")
         encrypt_file(arg[1], arg[2])
 
-    # elif command == 'decrypt':
-    #
-    # elif command == 'authorize':
+    elif command == 'decrypt':
+        arg=request.split(" ")
+        decrypt_file(arg[1], arg[2],arg[3])
+    elif command == 'authorize':
+        arg=request.split(" ")
+        authorizeUser(arg[1],arg[2])
     #     #
     # elif command == 'deauthorize':
     #     #do
@@ -123,7 +126,8 @@ def generateSecPass(user,password):
     record = ''+user+':$6$'+securedPassword+':'+dateUpdate+'\n'
     return record
 
-def addFileEntry(file_name,integrity_value,code_salt,owner,authorized_users):
+def addFileEntry(file_name,integrity_value,code_salt,authorized_users):
+    owner=user_id['user']
     f = open(filesDB, 'a')
     record = file_name+':'+integrity_value+':'+code_salt+':'+owner+':'+authorized_users
     f.write(record)
@@ -145,27 +149,132 @@ def decrypt(ciphertext, key):
     return plaintext.rstrip(b"\0")
 
 def encrypt_file(file_path, file_pass):
-    key=sha256(str(file_pass).encode('utf-8')).digest()
+    KEY_SIZE=16
+    DERIVATION_ROUNDS=10000
+    salt =Random.new().read(16).hex()
+    derivedKey = file_pass+salt
+    derivedKey = sha256(derivedKey.encode('utf-8')).digest()
+    for i in range(1,DERIVATION_ROUNDS):
+        derivedKey = sha256(derivedKey).digest()
+    derivedKey = derivedKey[:KEY_SIZE]
     file_name=os.path.basename(file_path)
     if (not os.path.exists(file_path)):
-        logging.error('FAILURE: %s', ('The file %s does not exist.'%file_path), extra=user_id)
+        logging.error('FAILURE: %s', ('The file %s does not exist.'%file_name), extra=user_id)
     else:
+        integrity_value= compute_integrity(file_path)
         with open(file_name, 'rb') as fo:
             plaintext = fo.read()
-        enc = encrypt(plaintext, key)
+        enc = encrypt(plaintext, derivedKey)
         try:
             with open(os.path.join(home+'/data',file_name), 'wb') as outfile:
                 outfile.write(enc)
             logging.info('SUCCESS: %s',('The file %s has been encrypted successfully.'%file_name),extra=user_id)
+            addFileEntry(file_name,integrity_value,salt,'')
         except IOError:
             logging.error('FAILURE: %s',('The file %s does not exist.'%outfile), extra=user_id)
 
-def decrypt_file(file_name, key):
-    with open(file_name, 'rb') as fo:
-        ciphertext = fo.read()
-    dec = decrypt(ciphertext, key)
-    with open(file_name[:-4], 'wb') as fo:
-        fo.write(dec)
+def decrypt_file(file_name,file_path, key):
+    (foundFile,authiUser)= lookupFile(file_name)
+    if(foundFile and authiUser):
+        try:
+            with open(file_name, 'rb') as fo:
+                ciphertext = fo.read()
+            dec = decrypt(ciphertext, key)
+        except IOError:
+            logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
+        try:
+            with open(file_name[:-4], 'wb') as fo:
+                fo.write(dec)
+        except IOError:
+            logging.error('FAILURE: %s',('The file %s does not exist.'%file_name[:-4]), extra=user_id)
+
+def compute_integrity(file_path):
+    file_name= os.path.basename(file_path)
+    BLOCKSIZE = 65536
+    hasher = sha256()
+    with open(file_path, 'rb') as afile:
+        buf = afile.read(BLOCKSIZE)
+        while len(buf) > 0:
+            hasher.update(buf)
+            buf = afile.read(BLOCKSIZE)
+    return hasher.hexdigest()
+
+def lookupFile(file_name):
+    if os.path.exists(filesDB):
+        with open(filesDB, 'r') as f:
+            for line in f:
+                #check if the file is present in the DB
+                if(line.strip().split(":")[0]==file_name):
+                    #check if the currentUser is the owner
+                    if line.strip().split(":")[3]==user_id['user']:
+                        (foundFile,AuthoUser)= (True,True)
+                        return (foundFile,AuthoUser)
+                        # check if the currentUser is authorized
+                    else:
+                        for usr in line.strip().split(":")[4].strip().split(','):
+                            if(usr==user_id['user']):
+                                (foundFile,authoUser)= (True,True)
+                                return (foundFile,authoUser)
+                        logging.error('Unauthorized: %s',('You are not allowed to access the file %s.'%file_name), extra=user_id)
+                        (foundFile,AuthoUser)= (True,False)
+                        return (foundFile,AuthoUser)
+
+    logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
+    (foundFile,AuthiUser)= (False,False)
+    return (foundFile,AuthoUser)
+
+def authorizeUser(username, file_name):
+        if os.path.exists(filesDB):
+            with open(filesDB, 'r') as f:
+                for line in f:
+                    #check if the file is present in the DB
+                    if(line.strip().split(":")[0]==file_name):
+                        #check if the currentUser is the owner
+                        if line.strip().split(":")[3]==user_id['user']:
+                            userExist=False
+                            for usr in line.strip().split(":")[4].strip().split(','):
+                                # check if the username is already in the authorized list
+                                if(usr==username):
+                                    userExist=True
+                                    break
+                            if(not userExist):
+                                addAuthoUser(username,file_name)
+                        else:
+                            logging.error('Unauthorized: %s',('You are not allowed to access the file %s.'%file_name), extra=user_id)
+        else:
+            logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
+
+def deauthorizeUser(username,file_name):
+    if os.path.exists(filesDB):
+        with open(filesDB, 'r') as f:
+            for line in f:
+                #check if the file is present in the DB
+                if(line.strip().split(":")[0]==file_name):
+                    #check if the currentUser is the owner
+                    if line.strip().split(":")[3]==user_id['user']:
+                        userExist=False
+                        for usr in line.strip().split(":")[4].strip().split(','):
+                            # check if the username is already in the authorized list
+                            if(usr==username):
+                                userExist=True
+                                break
+                        if(not userExist):
+                            deleteAuthoUser(username)
+                    else:
+                        logging.error('Unauthorized: %s',('You are not allowed to access the file %s.'%file_name), extra=user_id)
+    else:
+        logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
+
+def addAuthoUser(username,file_name):
+    currentUser=user_id['user']
+    if (os.path.exists(filesDB)):
+        for line in fileinput.input([filesDB], inplace=True):
+            if line.strip().startswith(file_name):
+                     line = line.rstrip('\n')+username+','
+                     sys.stdout.write(line)
+        logging.info('SUCCESS: %s',('Allowed %s to access the file %s.'%(username,file_name)),extra=user_id)
+def deleteAuthoUser(username):
+    print("should remove the username")
 
 if __name__ == '__main__':
     selectMod()
