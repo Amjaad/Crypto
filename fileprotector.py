@@ -13,9 +13,9 @@ from Crypto import Random
 #System setup
 FORMAT = '%(asctime)s - %(levelname)s - %(user)s - %(message)s'
 logging.basicConfig(filename='fileprotector.log', filemode='a',format=FORMAT,level=logging.INFO)
-home = '/Users/amjad/git/Crypto/HOME'
-usersFile = os.path.join(home,'users')
-filesDB= os.path.join(home,'files')
+Home = os.getcwd()
+usersFile = os.path.join(Home,'users')
+filesDB= os.path.join(Home,'files')
 user_id={}
 
 def selectMod():
@@ -95,13 +95,13 @@ def commandOpt(request):
     elif command == 'authorize':
         arg=request.split(" ")
         authorizeUser(arg[1],arg[2])
-    #     #
-    # elif command == 'deauthorize':
-    #     #do
-    # elif command == 'exit':
-
+    elif command == 'deauthorize':
+        arg=request.split(" ")
+        deauthorizeUser(arg[1],arg[2])
+    elif command == 'exit':
+        exit()
     else:
-        print("Unknown Option Selected!")
+        print("Command not found")
 
 def isAdmin():
     return user_id['user']=='admin'
@@ -166,27 +166,43 @@ def encrypt_file(file_path, file_pass):
             plaintext = fo.read()
         enc = encrypt(plaintext, derivedKey)
         try:
-            with open(os.path.join(home+'/data',file_name), 'wb') as outfile:
+            with open(os.path.join(Home+'/data',file_name), 'wb') as outfile:
                 outfile.write(enc)
             logging.info('SUCCESS: %s',('The file %s has been encrypted successfully.'%file_name),extra=user_id)
             addFileEntry(file_name,integrity_value,salt,'')
         except IOError:
             logging.error('FAILURE: %s',('The file %s does not exist.'%outfile), extra=user_id)
 
-def decrypt_file(file_name,file_path, key):
-    (foundFile,authiUser)= lookupFile(file_name)
-    if(foundFile and authiUser):
+def decrypt_file(secure_file,orig_file, file_pass):
+    (foundFile,authoUser)= lookupFile(secure_file)
+    if(foundFile and authoUser):
+        KEY_SIZE=16
+        DERIVATION_ROUNDS=10000
+        (file_integV,salt) = extract_integValue_salt(secure_file)
+        derivedKey = file_pass+salt
+        derivedKey = sha256(derivedKey.encode('utf-8')).digest()
+        for i in range(1,DERIVATION_ROUNDS):
+            derivedKey = sha256(derivedKey).digest()
+        derivedKey = derivedKey[:KEY_SIZE]
         try:
-            with open(file_name, 'rb') as fo:
+            with open(os.path.join(Home+'/data',secure_file), 'rb') as fo:
                 ciphertext = fo.read()
-            dec = decrypt(ciphertext, key)
+            dec = decrypt(ciphertext, derivedKey)
         except IOError:
-            logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
+            logging.error('FAILURE: %s',('The file %s does not exist.'%secure_file), extra=user_id)
         try:
-            with open(file_name[:-4], 'wb') as fo:
+            #The decrypted file has the same name as the secure_file
+            with open(secure_file, 'wb') as fo:
                 fo.write(dec)
         except IOError:
-            logging.error('FAILURE: %s',('The file %s does not exist.'%file_name[:-4]), extra=user_id)
+            logging.error('FAILURE: %s',('The file %s does not exist.'%secure_file), extra=user_id)
+        integV_decryp = compute_integrity(secure_file)
+        if(integV_decryp == file_integV):
+            logging.info('SUCCESS: %s',('The file %s has been encrypted successfully.'%secure_file),extra=user_id)
+        else:
+            os.remove(secure_file)
+            logging.error('FAILURE: %s',('Could not decrypt the file %s (it is corrupted OR the code was incorrect).'%secure_file), extra=user_id)
+
 
 def compute_integrity(file_path):
     file_name= os.path.basename(file_path)
@@ -258,8 +274,8 @@ def deauthorizeUser(username,file_name):
                             if(usr==username):
                                 userExist=True
                                 break
-                        if(not userExist):
-                            deleteAuthoUser(username)
+                        if(userExist):
+                            removeAuthoUser(username,file_name)
                     else:
                         logging.error('Unauthorized: %s',('You are not allowed to access the file %s.'%file_name), extra=user_id)
     else:
@@ -273,8 +289,28 @@ def addAuthoUser(username,file_name):
                      line = line.rstrip('\n')+username+','
                      sys.stdout.write(line)
         logging.info('SUCCESS: %s',('Allowed %s to access the file %s.'%(username,file_name)),extra=user_id)
-def deleteAuthoUser(username):
-    print("should remove the username")
+
+def removeAuthoUser(username,file_name):
+    currentUser=user_id['user']
+    if (os.path.exists(filesDB)):
+        for line in fileinput.input([filesDB], inplace=True):
+            if line.strip().startswith(file_name):
+                line = line.replace((username+','),'')
+                sys.stdout.write(line)
+        logging.info('SUCCESS: %s',('Remove %s access to the file %s.'%(username,file_name)),extra=user_id)
+
+def extract_integValue_salt(file_name):
+    with open(filesDB, 'r') as f:
+        for line in f:
+            #check if the file is present in the DB
+            if(line.strip().split(":")[0]==file_name):
+                return (line.strip().split(":")[1],line.strip().split(":")[2])
 
 if __name__ == '__main__':
+    @click.command()
+    @click.option('--home', help='set home directory')
+    def setHomeDir(home):
+        global Home
+        Home = home
+    setHomeDir()
     selectMod()
