@@ -6,7 +6,7 @@ This is a basic file security system that allows authorized users to encrypt and
 
 * A Unix-like operating system (eg. Debian, CentOS, Mac OS X, etc.).
 
-* Pyhton version 3.x
+* Python version 3.x
 * Use **pip3 install** to get the following libs:
 	* hashlib
 	* passlib
