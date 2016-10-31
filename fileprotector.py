@@ -12,8 +12,8 @@ from Crypto.Cipher import AES
 from Crypto import Random
 #System setup
 FORMAT = '%(asctime)s - %(levelname)s - %(user)s - %(message)s'
-logging.basicConfig(filename='fileprotector.log', filemode='a',format=FORMAT,level=logging.INFO)
 Home_dir = os.getcwd()
+logging.basicConfig(filename=os.path.join(Home_dir,'fileprotector.log'), filemode='a',format=FORMAT,level=logging.INFO)
 usersFile = os.path.join(Home_dir,'users')
 filesDB= os.path.join(Home_dir,'files')
 user_id={}
@@ -50,6 +50,7 @@ def selectMod():
             if home is not None:
                 global Home_dir
                 Home_dir = home
+            user_id['user']='admin'
             addEntity('admin',password)
         createAdmin()
         exit()
@@ -64,7 +65,7 @@ def authi(user, password):
                     foundUser=True
     if foundUser:
         securedPass = records and records[0][1]
-        #fromat the hash to match pbkdf2_sha512 outputs.
+        #format the hash to match pbkdf2_sha512 outputs.
         hash= "$pbkdf2-sha512$10000"+securedPass[2:]
         return pbkdf2_sha512.verify(password, hash)
 
@@ -78,6 +79,7 @@ def addEntity(user,password):
         record = generateSecPass(user,password)
         usersfile.write(record)
         usersfile.close()
+        logging.info('SUCCESS: %s',('Added a new user: %s.'%user),extra=user_id)
 
 def usernameExists(user):
     if (os.path.exists(usersFile)):
@@ -130,7 +132,7 @@ def generateSecPass(user,password):
     hash = pbkdf2_sha512.encrypt(password,rounds=10000)
     # pbkdf2_sha512.encrypt returns a string in this format:
     # '$pbkdf2-sha512$10000$rounds=10000$salt$hashed-password'
-    # So we need to change the fromat to '$6$salt$hashed-password'
+    # So we need to change the format to '$6$salt$hashed-password'
     securedPassword = re.sub('\$pbkdf2-sha512\$10000\$', '', hash)
     dateUpdate = dt.datetime.today().strftime("%m/%d/%Y")
     record = ''+user+':$6$'+securedPassword+':'+dateUpdate+'\n'
@@ -227,11 +229,13 @@ def compute_integrity(file_path):
     return hasher.hexdigest()
 
 def lookupFile(file_name):
+    foundFile=False
     if os.path.exists(filesDB):
         with open(filesDB, 'r') as f:
             for line in f:
                 #check if the file is present in the DB
                 if(line.strip().split(":")[0]==file_name):
+                    foundFile=True
                     #check if the currentUser is the owner
                     if line.strip().split(":")[3]==user_id['user']:
                         (foundFile,AuthoUser)= (True,True)
@@ -245,17 +249,19 @@ def lookupFile(file_name):
                         logging.error('Unauthorized: %s',('You are not allowed to access the file %s.'%file_name), extra=user_id)
                         (foundFile,AuthoUser)= (True,False)
                         return (foundFile,AuthoUser)
-
-    logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
-    (foundFile,AuthoUser)= (False,False)
-    return (foundFile,AuthoUser)
+    if not foundFile:
+        logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
+        (foundFile,AuthoUser)= (False,False)
+        return (foundFile,AuthoUser)
 
 def authorizeUser(username, file_name):
+        foundFile=False
         if os.path.exists(filesDB):
             with open(filesDB, 'r') as f:
                 for line in f:
                     #check if the file is present in the DB
                     if(line.strip().split(":")[0]==file_name):
+                        foundFile=True
                         #check if the currentUser is the owner
                         if line.strip().split(":")[3]==user_id['user']:
                             userExist=False
@@ -268,15 +274,17 @@ def authorizeUser(username, file_name):
                                 addAuthoUser(username,file_name)
                         else:
                             logging.error('Unauthorized: %s',('You are not allowed to access the file %s.'%file_name), extra=user_id)
-        else:
+        if not foundFile:
             logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
 
 def deauthorizeUser(username,file_name):
+    foundFile=False
     if os.path.exists(filesDB):
         with open(filesDB, 'r') as f:
             for line in f:
                 #check if the file is present in the DB
                 if(line.strip().split(":")[0]==file_name):
+                    foundFile=True
                     #check if the currentUser is the owner
                     if line.strip().split(":")[3]==user_id['user']:
                         userExist=False
@@ -289,7 +297,7 @@ def deauthorizeUser(username,file_name):
                             removeAuthoUser(username,file_name)
                     else:
                         logging.error('Unauthorized: %s',('You are not allowed to access the file %s.'%file_name), extra=user_id)
-    else:
+    if not foundFile:
         logging.error('FAILURE: %s',('The file %s does not exist.'%file_name), extra=user_id)
 
 def addAuthoUser(username,file_name):
