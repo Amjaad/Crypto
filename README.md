@@ -26,7 +26,7 @@ If you want to specifiy the home directory, then you need to pass the directory 
 * The system does not require new users to reset their passwords after their accounts have been created by the admin. 
 So, if the new users don't reset their password the first time they login, the admin can access their account.
 
-* User session doesn't expire. If the user leaves the system running without logging, there can be accessed by others     
+* User session doesn't expire. If the user leaves the system running without logging out, the account can be accessed by others.     
 
 ##Future Improvements 
    
